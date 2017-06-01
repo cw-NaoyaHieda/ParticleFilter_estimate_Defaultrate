@@ -1,5 +1,5 @@
 old_d<-getwd()
-setwd("C:/Users/naoya/Desktop/Graduage_study/2016_ParticleFilter_estimate_Defaultrate/作業フォルダ/script")
+setwd("C:/Users/naoya/Desktop/Graduage_study/2017ParticleFilter_estimate_Defaultrate/script")
 library(rgl)
 library(mvtnorm)
 library(reshape2)
@@ -8,6 +8,8 @@ library(doSNOW)
 library(foreach)
 library(copula)
 source('DR_density.R', encoding = 'UTF-8')
+
+
 
 AR_sim<-function(time=100,rho=0.08,PD=0.035){
   sig<-function(x){(tanh(x)+1)/2}
@@ -22,16 +24,35 @@ AR_sim<-function(time=100,rho=0.08,PD=0.035){
     tmp_x<-mu+tau*(x[i,]-mu)+rmvnorm(1,c(0,0),sigma)
     x<-rbind(x,tmp_x)
   }
-  
   x<-sig(x)
   x<-data.frame(x)
   colnames(x)<-c("rho","PD")
   
+  
+  DR <- PD
+  for(i in 2:time){
+    density<-sapply(1:9999/10000,function(y) g_DR.fn(rho=x$rho[i],PD=x$PD[i],DR=y))
+    density_range<-which(density>0)
+    max_denstiy<-max(density)
+    
+    check<-TRUE
+    while(check){
+      y<-runif(1,density_range[1]/10000,density_range[length(density_range)]/10000)
+      if(g_DR.fn(rho=x$rho[i],PD=x$PD[i],DR=y) >max_denstiy*runif(1,0,1)){
+        DR<-c(DR,y)
+        check<-FALSE
+      }
+    }
+  }
+  
+  
+  
   print(head(x))
-  DR<-c(0.035)
+  x <- cbind(x,DR)
   
   plot(x$rho,type="l")
   plot(x$PD,type="l")
+  plot(x$DR,type="l")
   
   out<-data.frame(x)
 }

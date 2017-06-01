@@ -1,5 +1,5 @@
 ---
-title: "FiltelingとSmoothing"
+title: "Filteling and Smoothing"
 author: "稗田尚弥"
 date: "`r Sys.Date()`"
 output:
@@ -24,7 +24,7 @@ knitr::opts_chunk$set(echo = TRUE,message=FALSE,warning=FALSE)
 
 ## パッケージの読み込み
 ところどころ、開始からの時間を出力しておく
-```{r}
+```{r package}
 library(rgl)
 library(mvtnorm)
 library(reshape2)
@@ -36,13 +36,13 @@ start_time <- Sys.time()
 ```
 
 とりあえず、ARモデルにに従って、$PDと\rho$を生成して、$DR$をHullの密度関数に従って、棄却法で発生
+
 ## シミュレーション
 ```{r}
 source("../script/データ編集.R", encoding = "UTF-8")
 source('../script/DR_density.R', encoding = 'UTF-8')
 source('../script/AR_sim.R', encoding = 'UTF-8')
 set.seed(708)
-AR_sim
 answer<-AR_sim(time=100,rho = 0.06,PD=0.035)
 head(answer)
 data_for_Kalman<-data.frame(dt=c(1:length(answer$DR)),DR=answer$DR)
@@ -82,7 +82,7 @@ theta_sigma<-matrix(c(0.0005,0,0,0.0004),ncol=2)
 パーティクルの数は、128個  
 先ほど設定した初期値で、$\theta$の初期値を発生。状態変数への変換も行う。
 ```{r}
-N <- 128
+N <- 1000
 proposal_theta_m <- theta_mu
 proposal_theta_v <- theta_sigma
 theta_0<-rmvnorm(N , mean=theta_mu , sigma = theta_sigma)
@@ -156,7 +156,11 @@ if(sum(weight^2)^-1 < N/10){
 結果の保存  
 state_100にリサンプリングする前の状態変数と、重みと、リサンプリングした状態変数のデータのリスト
 ```{r}
-state_100<-list(data.frame(rho=state[,1],PD=state[,2],weight=weight,re_rho=re_state[,1],re_PD=re_state[,2],re_weight=re_state[,3]))
+state_100<-list(data.frame(rho=state[,1],
+                           PD=state[,2],weight=weight,
+                           re_rho=re_state[,1],
+                           re_PD=re_state[,2],
+                           re_weight=re_state[,3]))
 head(state_100[[1]],n=10)
 Sys.time()-start_time
 ```
@@ -166,7 +170,8 @@ Sys.time()-start_time
 ```{r}
 theta_100<-list(data.frame(re_theta))
 cl <- makeCluster(rep('localhost', 4))
-clusterExport(cl, c("dmvnorm","rmvnorm","A_r","N","g_DR.fn","theta_tau","theta_mu","theta_sigma","proposal_theta_v","runif"))
+clusterExport(cl, c("dmvnorm","rmvnorm","A_r","N","g_DR.fn",
+                    "theta_tau","theta_mu","theta_sigma","proposal_theta_v","runif"))
 Sys.time()-start_time
 ```
 こっからは繰り返し
@@ -258,7 +263,8 @@ print(ggplot(plot_d,aes(x=dt))+
         geom_line(aes(y=answer,colour="answer"))+
         geom_line(aes(y=estimate_rho,colour="filter"))+
         geom_ribbon(aes(ymin=twenty_fif_rho, ymax=seventy_fif_rho,fill="50%"),alpha = 0.3)+
-        geom_ribbon(aes(ymin=two_fif_rho, ymax=nine_fif,fill="90%"),alpha = 0.3)+theme_bw(15)+
+        geom_ribbon(aes(ymin=two_fif_rho, ymax=nine_fif,fill="90%"),alpha = 0.3)+
+        theme_bw(15)+
         theme(legend.position=c(.85,.75),legend.background=element_blank())+
         ylab(expression(rho))+
         scale_color_manual(name='', values=c("answer" = "red", "filter" = "blue"))+
@@ -277,7 +283,8 @@ plot_d<-data.frame(dt=c(1:length(data_for_Kalman[,1])),
 print(ggplot(plot_d,aes(x=dt))+geom_line(aes(y=answer,colour="answer"))+
         geom_line(aes(y=estimate_PD,colour="filter"))+
         geom_ribbon(aes(ymin=twenty_fif_pd, ymax=seventy_fif_pd,fill="50%"),alpha = 0.3)+
-        geom_ribbon(aes(ymin=two_fif_pd, ymax=nine_fif,fill="90%"),alpha = 0.3)+theme_bw(15)+
+        geom_ribbon(aes(ymin=two_fif_pd, ymax=nine_fif,fill="90%"),alpha = 0.3)+
+        theme_bw(15)+
         theme(legend.position=c(.85,.75),legend.background=element_blank())+
         ylab(expression(pd))+
         scale_color_manual(name='', values=c("answer" = "red", "filter" = "blue"))+
@@ -398,128 +405,6 @@ print(ggplot(plot_d,aes(x=dt))+geom_line(aes(y=answer,colour="answer"))+
         ylab(expression(PD))+
         scale_color_manual(name='', values=c("answer" = "red", "filter" = "blue","sm"="green"))+
         scale_fill_manual(name='', values=c("50%" = "green", "90%" = "gray")))
-Sys.time()-start_time
-```
-
-# 補助粒子フィルタの場合
-## フィルタリング結果の図
-```{r}
-tmp<-state_100
-re_PD=c()
-re_rho=c()
-PD=c()
-rho=c()
-for(i in 1:length(tmp)){
-  re_PD_tmp<-sum(tmp[[i]][,5]*tmp[[i]][,6])
-  re_rho_tmp<-sum(tmp[[i]][,4]*tmp[[i]][,6])
-  PD_tmp<-sum(tmp[[i]][,2]*tmp[[i]][,3])
-  rho_tmp<-sum(tmp[[i]][,1]*tmp[[i]][,3])
-  re_PD=c(re_PD,re_PD_tmp)
-  re_rho=c(re_rho,re_rho_tmp)
-  PD=c(PD,PD_tmp)
-  rho=c(rho,rho_tmp)
-}
-
-
-qu<-data.frame(t(sapply(state_100,function(x) representative_value.fn(x[,c(4,5,6)]))))
-  
-  
-plot_d<-data.frame(dt=c(1:length(data_for_Kalman[,1])),
-                   answer=answer$rho,
-                   estimate_rho=re_rho,
-                   two_fif_rho=qu$two_fif_rho,
-                   twenty_fif_rho=qu$twenty_fif_rho,
-                   seventy_fif_rho=qu$seventy_fif_rho,
-                   nine_fif=qu$nine_fif_rho)
-  
-print(ggplot(plot_d,aes(x=dt))+geom_line(aes(y=answer,colour="answer"))+
-        geom_line(aes(y=estimate_rho,colour="filter"))+
-        geom_ribbon(aes(ymin=twenty_fif_rho, ymax=seventy_fif_rho,fill="50%"),alpha = 0.3)+
-        geom_ribbon(aes(ymin=two_fif_rho, ymax=nine_fif,fill="90%"),alpha = 0.3)+
-        theme_bw(15)+
-        theme(legend.position=c(.85,.75),legend.background=element_blank())+
-        ylab(expression(rho))+
-        scale_color_manual(name='', values=c("answer" = "red", "filter" = "blue"))+
-        scale_fill_manual(name='', values=c("50%" = "blue", "90%" = "gray")))
-
-  
-plot_d<-data.frame(dt=c(1:length(data_for_Kalman[,1])),
-                   answer=answer$PD,estimate_PD=re_PD,
-                   two_fif_pd=qu$two_fif_pd,
-                   twenty_fif_pd=qu$twenty_fif_pd,
-                   seventy_fif_pd=qu$seventy_fif_pd,
-                   nine_fif=qu$nine_fif_pd)
-  
-print(ggplot(plot_d,aes(x=dt))+geom_line(aes(y=answer,colour="answer"))+
-        geom_line(aes(y=estimate_PD,colour="filter"))+
-        geom_ribbon(aes(ymin=twenty_fif_pd, ymax=seventy_fif_pd,fill="50%"),alpha = 0.3)+
-        geom_ribbon(aes(ymin=two_fif_pd, ymax=nine_fif,fill="90%"),alpha = 0.3)+
-        theme_bw(15)+
-        theme(legend.position=c(.85,.75),legend.background=element_blank())+ylab("pd")+
-        scale_color_manual(name='', values=c("answer" = "red", "filter" = "blue"))+
-        scale_fill_manual(name='', values=c("50%" = "blue", "90%" = "gray")))
-Sys.time()-start_time
-```
-
-## 平滑化結果の図
-```{r}
-cl <- makeCluster(rep('localhost', 4))
-clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu",
-                    "sm_state","theta_sigma","proposal_theta_v"))
-sm_parameter <- parApply(cl,data.frame(i = length(data_for_Kalman[,1]):1),
-                         1,function(i) colSums(sm_state[[i]][,c(1,2)]*
-                                     sm_state[[i]][,3]/
-                                       sum(sm_state[[i]][,3])))
-stopCluster(cl)
-
-
-qu<-data.frame(t(sapply(sm_state,function(x) representative_value.fn(x))))
-  
-plot_d<-data.frame(dt=c(1:length(data_for_Kalman[,1])),
-                   answer=answer$rho,
-                   estimate_rho=re_rho,
-                   two_fif_rho=qu$two_fif_rho,
-                   sm_rho=sm_parameter[,1],
-                   twenty_fif_rho=qu$twenty_fif_rho,
-                   seventy_fif_rho=qu$seventy_fif_rho,
-                   nine_fif=qu$nine_fif_rho)
-
-print(ggplot(plot_d,aes(x=dt))+geom_line(aes(y=answer,colour="answer"))+
-        geom_line(aes(y=estimate_rho,colour="filter"),linetype="dashed")+
-        geom_line(aes(y=sm_rho,colour="sm"))+
-        geom_ribbon(aes(ymin=twenty_fif_rho, ymax=seventy_fif_rho,fill="50%"),alpha = 0.3)+
-        geom_ribbon(aes(ymin=two_fif_rho, ymax=nine_fif,fill="90%"),alpha = 0.3)+
-        theme_bw(15)+
-        theme(legend.position=c(.85,.75),legend.background=element_blank())+
-        ylab(expression(rho))+
-        scale_color_manual(name='',
-                           values=c("answer" = "red", "filter" = "blue","sm"="green"))+
-        scale_fill_manual(name='',
-                          values=c("50%" = "green", "90%" = "gray")))
-  
-  
-plot_d<-data.frame(dt=c(1:length(data_for_Kalman[,1])),
-                   answer=answer$PD,
-                   estimate_PD=re_PD,
-                   two_fif_pd=qu$two_fif_pd,
-                   sm_pd=sm_parameter[,2],
-                   twenty_fif_pd=qu$twenty_fif_pd,
-                   seventy_fif_pd=qu$seventy_fif_pd,
-                   nine_fif=qu$nine_fif_pd)
-  
-print(ggplot(plot_d,aes(x=dt))+
-        geom_line(aes(y=answer,colour="answer"))+
-        geom_line(aes(y=estimate_PD,colour="filter"),linetype="dashed")+
-        geom_line(aes(y=sm_pd,colour="sm"))+
-        geom_ribbon(aes(ymin=twenty_fif_pd, ymax=seventy_fif_pd,fill="50%"),alpha = 0.3)+
-        geom_ribbon(aes(ymin=two_fif_pd, ymax=nine_fif,fill="90%"),alpha = 0.3)+
-        theme_bw(15)+
-        theme(legend.position=c(.85,.75),legend.background=element_blank())+
-        ylab(expression(pd))+
-        scale_color_manual(name='',
-                           values=c("answer" = "red", "filter" = "blue","sm"="green"))+
-        scale_fill_manual(name='',
-                          values=c("50%" = "green", "90%" = "gray")))
 Sys.time()-start_time
 ```
 

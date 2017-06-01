@@ -127,8 +127,8 @@ local_trend_sim<-function(time=100,rho=0.08,PD=0.035,sigma_1=0.001,sigma_2=0.001
   print(head(x))
   DR<-c(PD)
   
-  plot(x$rho,type="l")
-  plot(x$PD,type="l")
+  plot(x$rho,type="l",ylab=expression(rho))
+  plot(x$PD,type="l",ylab=expression(PD))
   
   for(i in 2:time){
     density<-sapply(1:9999/10000,function(y) g_DR.fn(rho=x$rho[i],PD=x$PD[i],DR=y))
@@ -144,7 +144,7 @@ local_trend_sim<-function(time=100,rho=0.08,PD=0.035,sigma_1=0.001,sigma_2=0.001
       }
     }
   }
-  plot(DR,type="l")
+  plot(DR,type="l",ylab=expression(DR))
   out<-data.frame(x,DR)
   out
 }

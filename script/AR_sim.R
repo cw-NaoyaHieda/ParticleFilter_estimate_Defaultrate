@@ -202,7 +202,7 @@ local_trend_sim3<-function(time=100,rho=0.08,PD=0.035,sigma_1=0.001,sigma_2=0.00
   print(head(x))
   DR<-c(PD)
   
-  plot(x$PD,type="l")
+  plot(x$PD,type="l",ylab=expression(PD))
   
   for(i in 2:time){
     density<-sapply(1:9999/10000,function(y) g_DR.fn(rho=rho_0,PD=x$PD[i],DR=y))

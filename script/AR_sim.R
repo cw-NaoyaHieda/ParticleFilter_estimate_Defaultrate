@@ -49,10 +49,9 @@ AR_sim<-function(time=100,rho=0.08,PD=0.035){
   
   print(head(x))
   x <- cbind(x,DR)
-  
-  plot(x$rho,type="l")
-  plot(x$PD,type="l")
-  plot(x$DR,type="l")
+  plot(x$rho,type="l",ylab=expression(rho))
+  plot(x$PD,type="l",ylab=expression(PD))
+  plot(x$DR,type="l",ylab=expression(DR))
   
   out<-data.frame(x)
 }

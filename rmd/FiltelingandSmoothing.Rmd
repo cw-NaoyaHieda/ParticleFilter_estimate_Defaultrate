@@ -82,7 +82,7 @@ theta_sigma<-matrix(c(0.0005,0,0,0.0004),ncol=2)
 パーティクルの数は、128個  
 先ほど設定した初期値で、$\theta$の初期値を発生。状態変数への変換も行う。
 ```{r}
-N <- 1000
+N <- 256
 proposal_theta_m <- theta_mu
 proposal_theta_v <- theta_sigma
 theta_0<-rmvnorm(N , mean=theta_mu , sigma = theta_sigma)
@@ -169,7 +169,7 @@ Sys.time()-start_time
 複数のコアを活用しているのは、Partilceの発生と、weightの計算と、リサンプリング
 ```{r}
 theta_100<-list(data.frame(re_theta))
-cl <- makeCluster(rep('localhost', 4))
+cl <- makeCluster(rep('localhost', 7))
 clusterExport(cl, c("dmvnorm","rmvnorm","A_r","N","g_DR.fn",
                     "theta_tau","theta_mu","theta_sigma","proposal_theta_v","runif"))
 Sys.time()-start_time
@@ -308,7 +308,7 @@ A_r<-function(r,weiht_n){
   }
   return(1)
 }
-cl <- makeCluster(rep('localhost', 4))
+cl <- makeCluster(rep('localhost', 7))
 clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu","theta_sigma","proposal_theta_v"))
 sm_state<-list(state_100[[length(data_for_Kalman[,1])]][,c(4,5,6)])
 ```
@@ -356,7 +356,7 @@ Sys.time()-start_time
 ## 平滑化結果の図
 コアの準備をして、プロット
 ```{r}
-cl <- makeCluster(rep('localhost', 4))
+cl <- makeCluster(rep('localhost', 7))
 clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu",
                     "sm_state","theta_sigma","proposal_theta_v"))
 sm_parameter <- parApply(cl,data.frame(i = length(data_for_Kalman[,1]):1),

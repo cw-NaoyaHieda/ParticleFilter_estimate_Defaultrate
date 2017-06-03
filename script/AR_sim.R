@@ -29,20 +29,10 @@ AR_sim<-function(time=100,rho=0.08,PD=0.035){
   colnames(x)<-c("rho","PD")
   
   
-  DR <- PD
-  for(i in 2:time){
-    density<-sapply(1:9999/10000,function(y) g_DR.fn(rho=x$rho[i],PD=x$PD[i],DR=y))
-    density_range<-which(density>0)
-    max_denstiy<-max(density)
-    
-    check<-TRUE
-    while(check){
-      y<-runif(1,density_range[1]/10000,density_range[length(density_range)]/10000)
-      if(g_DR.fn(rho=x$rho[i],PD=x$PD[i],DR=y) >max_denstiy*runif(1,0,1)){
-        DR<-c(DR,y)
-        check<-FALSE
-      }
-    }
+  DR <- {}
+  for(i in 1:time){
+    #SIR_DRはDR_density.Rの関数
+    DR<-c(DR,SIR_DR(L=1,rho=x[i,1],pd=x[i,2])$q)
   }
   
   
@@ -130,20 +120,12 @@ local_trend_sim<-function(time=100,rho=0.08,PD=0.035,sigma_1=0.001,sigma_2=0.001
   plot(x$rho,type="l",ylab=expression(rho))
   plot(x$PD,type="l",ylab=expression(PD))
   
-  for(i in 2:time){
-    density<-sapply(1:9999/10000,function(y) g_DR.fn(rho=x$rho[i],PD=x$PD[i],DR=y))
-    density_range<-which(density>0)
-    max_denstiy<-max(density)
-    
-    check<-TRUE
-    while(check){
-      y<-runif(1,density_range[1]/10000,density_range[length(density_range)]/10000)
-      if(g_DR.fn(rho=x$rho[i],PD=x$PD[i],DR=y) >max_denstiy*runif(1,0,1)){
-        DR<-c(DR,y)
-        check<-FALSE
-      }
-    }
+  DR <- {}
+  for(i in 1:time){
+    #SIR_DRはDR_density.Rの関数
+    DR<-c(DR,SIR_DR(L=1,rho=x[i,1],pd=x[i,2])$q)
   }
+  
   plot(DR,type="l",ylab=expression(DR))
   out<-data.frame(x,DR)
   out

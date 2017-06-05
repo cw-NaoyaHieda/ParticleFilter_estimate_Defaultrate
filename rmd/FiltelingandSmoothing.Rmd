@@ -2,12 +2,7 @@
 title: "Filteling and Smoothing"
 author: "稗田尚弥"
 date: "`r Sys.Date()`"
-output:
-  pdf_document:
-    latex_engine: lualatex
-documentclass: ltjsarticle
-mainfont: Meiryo
-monofont: Meiryo
+output: html_document
 ---
 
 去年やっていたことの復讐  
@@ -15,7 +10,6 @@ POMPに逃げる前に、どこまで行っていたのか
 どこでつまずいたのか確認  
 確認していたら、粒子フィルタリングじゃなくてモンテカルロフィルタになっていること判明。
 
-というか、そもそも何やってたか忘れた  
 提案分布をシュミレーションしているARモデルと同じ分布としている．
 
 ```{r setup, include=FALSE,message=F,warning=FALSE}
@@ -82,7 +76,7 @@ theta_sigma<-matrix(c(0.0005,0,0,0.0004),ncol=2)
 パーティクルの数は、128個  
 先ほど設定した初期値で、$\theta$の初期値を発生。状態変数への変換も行う。
 ```{r}
-N <- 256
+N <- 1000
 proposal_theta_m <- theta_mu
 proposal_theta_v <- theta_sigma
 theta_0<-rmvnorm(N , mean=theta_mu , sigma = theta_sigma)
@@ -322,18 +316,19 @@ for(n in c(length(data_for_Kalman[,1])-1):1){
   #上記二つと平滑化のn+1番目のウェイトを取得
   X<-data.frame(X_n_1,X_n,weight_T[[length(data_for_Kalman[,1])-n]])
   colnames(X)<-c("n1_PD","n1_rho","n1_weight","n_PD","n_rho","n_weight","weight_T")
+   clusterExport(cl, c("X_n","X_n_1","i"))
   for(i in 1:N){
-    clusterExport(cl, c("X_n","X_n_1","i"))
+    clusterExport(cl, c("i"))
     #平滑化ウェイトの分子計算
     bunsi<-parApply(cl,X,1,function(x)
-      x[7]*dmvnorm(as.numeric(x[c(1,2)]),
+      x[7]*sum(as.numeric(x[c(1,2)]),
                    theta_mu+(as.numeric(X_n[i,c(1,2)])-theta_mu)*
-                     theta_tau,theta_sigma))
+                     theta_tau))
     #平滑化ウェイトの分母計算
     bunbo<-parApply(cl,X,1,function(x)
-      x[6]*dmvnorm(as.numeric(X_n_1[i,c(1,2)]),
+      x[6]*sum(as.numeric(X_n_1[i,c(1,2)]),
                    theta_mu+(x[c(4,5)]-theta_mu)*
-                     theta_tau,theta_sigma))
+                     theta_tau))
     weight_n<-c(weight_n,X_n[i,3]*sum(bunsi/sum(bunbo)))
   }
   weight_n<-cumsum(weight_n)/sum(weight_n)

@@ -164,20 +164,12 @@ VaR_loss_particle=function(level,parameter,lower){
 representative_value.fn<-function(data){
   data_rho<-data[order(data[,1]),]
   data_rho_weight_sum<-cumsum(data_rho[,3])
-  tf_label<-0
-  t_label<-0
-  f_label<-0
-  s_label<-0
-  nf_label<-0
-  seventy_fif<-fifty<-twenty_fif<-two_fif<-dim(data_rho)[1]
   nine_fif<-length(data_rho_weight_sum)
-  for(j in 1:length(data_rho_weight_sum)){
-    if(data_rho_weight_sum[j]>0.05&tf_label==0){two_fif<-j;tf_label<-1}
-    if(data_rho_weight_sum[j]>0.25&t_label==0&data_rho[two_fif,1]<data_rho[j,1]){twenty_fif<-j;t_label<-1}
-    if(data_rho_weight_sum[j]>0.5&f_label==0&data_rho[twenty_fif,1]<data_rho[j,1]){fifty<-j;f_label<-1}
-    if(data_rho_weight_sum[j]>0.75&s_label==0&data_rho[fifty,1]<data_rho[j,1]){seventy_fif<-j;s_label<-1}
-    if(data_rho_weight_sum[j]>0.95&nf_label==0&data_rho[seventy_fif,1]<data_rho[j,1]){nine_fif<-j;nf_label<-1}
-  }
+  two_fif <- which(data_rho_weight_sum > 0.05)[1]
+  twenty_fif <- which(data_rho_weight_sum > 0.25)[1]
+  fifty <- which(data_rho_weight_sum > 0.5)[1]
+  seventy_fif <- which(data_rho_weight_sum > 0.75)[1]
+  nine_fif <- which(data_rho_weight_sum > 0.95)[1]
   min_rho<-min(data_rho[,1])
   two_fif_rho<-data_rho[two_fif,1]
   twenty_fif_rho<-data_rho[twenty_fif,1]
@@ -188,20 +180,12 @@ representative_value.fn<-function(data){
   
   data_pd<-data[order(data[,2]),]
   data_pd_weight_sum<-cumsum(data_pd[,3])
-  tf_label<-0
-  t_label<-0
-  f_label<-0
-  s_label<-0
-  nf_label<-0
-  seventy_fif<-fifty<-twenty_fif<-two_fif<-dim(data_pd)[1]
-  nine_fif<-length(data_rho_weight_sum)
-  for(j in 1:length(data_rho_weight_sum)){
-    if(data_pd_weight_sum[j]>0.05&tf_label==0){two_fif<-j;tf_label<-1}
-    if(data_pd_weight_sum[j]>0.25&t_label==0&data_pd[two_fif,2]<data_pd[j,2]){twenty_fif<-j;t_label<-1}
-    if(data_pd_weight_sum[j]>0.5&f_label==0&data_pd[twenty_fif,2]<data_pd[j,2]){fifty<-j;f_label<-1}
-    if(data_pd_weight_sum[j]>0.75&s_label==0&data_pd[fifty,2]<data_pd[j,2]){seventy_fif<-j;s_label<-1}
-    if(data_pd_weight_sum[j]>0.95&nf_label==0&data_pd[seventy_fif,2]<data_pd[j,2]){nine_fif<-j;nf_label<-1}
-  }
+  nine_fif<-length(data_pd_weight_sum)
+  two_fif <- which(data_pd_weight_sum > 0.05)[1]
+  twenty_fif <- which(data_pd_weight_sum > 0.25)[1]
+  fifty <- which(data_pd_weight_sum > 0.5)[1]
+  seventy_fif <- which(data_pd_weight_sum > 0.75)[1]
+  nine_fif <- which(data_pd_weight_sum > 0.95)[1]
   min_pd<-min(data_pd[,2])
   two_fif_pd<-data_pd[two_fif,2]
   twenty_fif_pd<-data_pd[twenty_fif,2]

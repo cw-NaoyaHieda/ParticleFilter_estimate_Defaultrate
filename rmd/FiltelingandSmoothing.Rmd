@@ -37,7 +37,7 @@ source("../script/データ編集.R", encoding = "UTF-8")
 source('../script/DR_density.R', encoding = 'UTF-8')
 source('../script/AR_sim.R', encoding = 'UTF-8')
 set.seed(708)
-answer<-AR_sim(time=100,rho = 0.06,PD=0.035)
+answer<-AR_sim(time=2,rho = 0.06,PD=0.035)
 head(answer)
 data_for_Kalman<-data.frame(dt=c(1:length(answer$DR)),DR=answer$DR)
 colnames(data_for_Kalman)<-c("dt","Default_Rate")
@@ -308,22 +308,36 @@ sm_state<-list(state_100[[length(data_for_Kalman[,1])]][,c(4,5,6)])
 ```
 平滑化に関しては、コメント参照
 ```{r}
+colnames(theta_100[[1]]) <- c("n_PD","n_rho")
+colnames(theta_100[[2]]) <- c("n_PD","n_rho")
+clusterExport(cl, c("theta_100"))
 for(n in c(length(data_for_Kalman[,1])-1):1){
   weight_n<-c()
   #n+1とnの状態変数，ウェイトを取得
-  X_n_1<-data.frame(theta_100[[n+1]],weight=state_100[[n+1]][,6])
-  X_n<-data.frame(theta_100[[n]],weight=state_100[[n]][,6])
   #上記二つと平滑化のn+1番目のウェイトを取得
   X<-data.frame(X_n_1,X_n,weight_T[[length(data_for_Kalman[,1])-n]])
   colnames(X)<-c("n1_PD","n1_rho","n1_weight","n_PD","n_rho","n_weight","weight_T")
    clusterExport(cl, c("X_n","X_n_1","i"))
+   
+   a<-data.frame(theta_100[[n+1]],
+              n1_weight=state_100[[n+1]][,6],
+              theta_100[[n]],
+              n_weight=state_100[[n]][,6],
+              weight_T=weight_T[[length(data_for_Kalman[,1])-n]])
+   
   for(i in 1:N){
-    clusterExport(cl, c("i"))
     #平滑化ウェイトの分子計算
-    bunsi<-parApply(cl,X,1,function(x)
-      x[7]*sum(as.numeric(x[c(1,2)]),
-                   theta_mu+(as.numeric(X_n[i,c(1,2)])-theta_mu)*
-                     theta_tau))
+    bunsi<-parApply(cl,
+                    data.frame(theta_100[[n+1]],
+                               n1_weight=state_100[[n+1]][,6],
+                               theta_100[[n]],
+                               n_weight=state_100[[n]][,6],
+                               weight_T=weight_T[[length(data_for_Kalman[,1])-n]]),
+                    1,
+                    function(x)
+                      x[7]*sum(as.numeric(x[c(1,2)]),
+                               theta_mu+(as.numeric(X_n[i,c(1,2)])-theta_mu)*
+                                 theta_tau))
     #平滑化ウェイトの分母計算
     bunbo<-parApply(cl,X,1,function(x)
       x[6]*sum(as.numeric(X_n_1[i,c(1,2)]),

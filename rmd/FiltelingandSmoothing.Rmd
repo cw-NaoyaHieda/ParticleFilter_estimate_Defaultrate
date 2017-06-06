@@ -37,7 +37,7 @@ source("../script/データ編集.R", encoding = "UTF-8")
 source('../script/DR_density.R', encoding = 'UTF-8')
 source('../script/AR_sim.R', encoding = 'UTF-8')
 set.seed(708)
-answer<-AR_sim(time=2,rho = 0.06,PD=0.035)
+answer<-AR_sim(time=100,rho = 0.06,PD=0.035)
 head(answer)
 data_for_Kalman<-data.frame(dt=c(1:length(answer$DR)),DR=answer$DR)
 colnames(data_for_Kalman)<-c("dt","Default_Rate")
@@ -76,7 +76,7 @@ theta_sigma<-matrix(c(0.0005,0,0,0.0004),ncol=2)
 パーティクルの数は、128個  
 先ほど設定した初期値で、$\theta$の初期値を発生。状態変数への変換も行う。
 ```{r}
-N <- 1000
+N <- 100
 proposal_theta_m <- theta_mu
 proposal_theta_v <- theta_sigma
 theta_0<-rmvnorm(N , mean=theta_mu , sigma = theta_sigma)
@@ -165,7 +165,7 @@ Sys.time()-start_time
 theta_100<-list(data.frame(re_theta))
 cl <- makeCluster(rep('localhost', 7))
 clusterExport(cl, c("dmvnorm","rmvnorm","A_r","N","g_DR.fn",
-                    "theta_tau","theta_mu","theta_sigma","proposal_theta_v","runif"))
+                    "theta_tau","theta_mu","theta_sigma","proposal_theta_v","runif","dt","rt"))
 Sys.time()-start_time
 ```
 こっからは繰り返し
@@ -178,8 +178,7 @@ for(j in 2:length(data_for_Kalman[,1])){
   state<-c()
   #Particle発生
   theta<-t(parApply(cl,post_theta,1,function(x){
-                    rmvnorm(1,mean=theta_mu+theta_tau*(x-theta_mu),
-                            sigma=theta_sigma)}
+                    c(rt(2,df=1))+theta_mu+theta_tau*(x-theta_mu)}
                     )
            )
   state<-sig(theta)
@@ -188,9 +187,11 @@ for(j in 2:length(data_for_Kalman[,1])){
   state[state[,1]>0.99999,1]<-0.99999
   state[state[,2]>0.99999,2]<-0.99999
   #重み計算
-  weight_solution<-data.frame(state_100[[j-1]][,6],state,data_for_Kalman[j,2])
+  weight_solution<-data.frame(post_theta,state_100[[j-1]][,6],theta,state,data_for_Kalman[j,2])
   weight<-parApply(cl,weight_solution,1,function(x){
-    x[1]*g_DR.fn(rho=x[2],PD=x[3],DR=x[4])
+    x[3]*g_DR.fn(rho=x[6],PD=x[7],DR=x[8])*
+      dmvnorm(x = x[c(4,5)],mean = theta_mu+theta_tau*(x[c(1,2)]-theta_mu),sigma = theta_sigma)/
+      (dt(x[4],df=1)*dt(x[5],df=1))
       })
   weight<-weight/sum(weight)
   state<-cbind(state,weight=weight)
@@ -294,13 +295,8 @@ Sys.time()-start_time
 フィルタリングと同じようにコアの準備
 ```{r}
 weight_T<-list(state_100[[length(data_for_Kalman[,1])]][,6])
-A_r<-function(r,weiht_n){
-  for(i in N:1){
-    if(r>=weight_n[i]){
-      return(i+1)
-    }
-  }
-  return(1)
+A_r<-function(r,weiht){
+  return(which(r>=weight)[1])
 }
 cl <- makeCluster(rep('localhost', 7))
 clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu","theta_sigma","proposal_theta_v"))
@@ -308,55 +304,56 @@ sm_state<-list(state_100[[length(data_for_Kalman[,1])]][,c(4,5,6)])
 ```
 平滑化に関しては、コメント参照
 ```{r}
-colnames(theta_100[[1]]) <- c("n_PD","n_rho")
-colnames(theta_100[[2]]) <- c("n_PD","n_rho")
-clusterExport(cl, c("theta_100"))
+clusterExport(cl, c("theta_100","state_100","N"))
+#時系列は、並列化できないので順番に処理
 for(n in c(length(data_for_Kalman[,1])-1):1){
   weight_n<-c()
   #n+1とnの状態変数，ウェイトを取得
   #上記二つと平滑化のn+1番目のウェイトを取得
-  X<-data.frame(X_n_1,X_n,weight_T[[length(data_for_Kalman[,1])-n]])
-  colnames(X)<-c("n1_PD","n1_rho","n1_weight","n_PD","n_rho","n_weight","weight_T")
-   clusterExport(cl, c("X_n","X_n_1","i"))
-   
-   a<-data.frame(theta_100[[n+1]],
-              n1_weight=state_100[[n+1]][,6],
-              theta_100[[n]],
-              n_weight=state_100[[n]][,6],
-              weight_T=weight_T[[length(data_for_Kalman[,1])-n]])
-   
-  for(i in 1:N){
-    #平滑化ウェイトの分子計算
-    bunsi<-parApply(cl,
-                    data.frame(theta_100[[n+1]],
-                               n1_weight=state_100[[n+1]][,6],
-                               theta_100[[n]],
-                               n_weight=state_100[[n]][,6],
-                               weight_T=weight_T[[length(data_for_Kalman[,1])-n]]),
-                    1,
-                    function(x)
-                      x[7]*sum(as.numeric(x[c(1,2)]),
-                               theta_mu+(as.numeric(X_n[i,c(1,2)])-theta_mu)*
-                                 theta_tau))
-    #平滑化ウェイトの分母計算
-    bunbo<-parApply(cl,X,1,function(x)
-      x[6]*sum(as.numeric(X_n_1[i,c(1,2)]),
-                   theta_mu+(x[c(4,5)]-theta_mu)*
-                     theta_tau))
-    weight_n<-c(weight_n,X_n[i,3]*sum(bunsi/sum(bunbo)))
-  }
-  weight_n<-cumsum(weight_n)/sum(weight_n)
+  a <- data.frame(theta_100[[n+1]],
+                  n1_weight=state_100[[n+1]][,6],
+                  theta_100[[n]],
+                  n_weight=state_100[[n]][,6],
+                  weight_T=weight_T[[length(data_for_Kalman[,1])-n]],
+                  n=n)
+  #平滑化ウェイトの分子計算
+  bunsi<-parApply(cl,
+                  a,
+                  1,
+                  function(x)
+                  sum(apply(data.frame(i=1:N),1, function (y) x[7]*dmvnorm(as.numeric(x[c(1,2)]),
+                  mean=theta_mu+(as.numeric(theta_100[[x[8]]][y,c(1,2)])-theta_mu)*
+                  theta_tau,sigma=theta_sigma))))
+  
+  
+  #平滑化ウェイトの分母計算
+  bunbo<-parApply(cl,
+                  a,
+                  1,
+                  function(x)
+                  sum(apply(data.frame(i=1:N),1, 
+                  function(y)
+                  x[6]*dmvnorm(as.numeric(theta_100[[x[8]+1]][y,c(1,2)]),
+                  mean=theta_mu+(x[c(4,5)]-theta_mu)*theta_tau,
+                  sigma = theta_sigma))))
+  
+  
+  weight_n<-c(state_100[[n]][,6]*bunsi/bunbo)
+  
+  weight_n<-weight_n/sum(weight_n)
   #必要ならば平滑化ウェイトでリサンプリング　いったんなし
-  #tmp<-runif(N,0,1)
-  #sm_state_num<-parApply(i=1:N)
-  #  pforeach(i = 1:N)({
-  #  A_r(tmp[i])
-  #})
-  sm_state_num <- 1:N
+  tmp<-runif(N,0,1)
+  if(sum(weight_n^2)^-1 < N/10){
+  sm_state_num<-apply(data.frame(tmp),1,function(x)A_r(x,cumsum(weight_n)/sum(weight_n)))
+   }
+  else{
+     sm_state_num <- 1:N
+  }
+  
   sm_state<-c(sm_state,
               list(data.frame(state_100[[n]][sm_state_num,c(4,5)],
                               weight_n[sm_state_num]/sum(weight_n[sm_state_num]))))
-  weight_T<-c(weight_T,list(weight_n/sum(weight_n)))
+  weight_T<-c(weight_T,list(weight_n[sm_state_num]/sum(weight_n[sm_state_num])))
 }
 stopCluster(cl)
 Sys.time()-start_time
@@ -370,12 +367,11 @@ clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu",
                     "sm_state","theta_sigma","proposal_theta_v"))
 sm_parameter <- parApply(cl,data.frame(i = length(data_for_Kalman[,1]):1),
                          1,function(i) colSums(sm_state[[i]][,c(1,2)]*
-                                     sm_state[[i]][,3]/
-                                       sum(sm_state[[i]][,3])))
+                                     sm_state[[i]][,3]))
 stopCluster(cl)
 
 qu<-data.frame(t(sapply(sm_state,function(x) representative_value.fn(x))))
-  
+qu <- qu[c(N:1),]
 plot_d<-data.frame(dt=c(1:length(data_for_Kalman[,1])),
                    answer=answer$rho,estimate_rho=re_rho,
                    two_fif_rho=qu$two_fif_rho,

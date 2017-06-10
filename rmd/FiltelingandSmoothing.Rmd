@@ -22,8 +22,8 @@ knitr::opts_chunk$set(echo = TRUE,message=FALSE,warning=FALSE)
 library(rgl)
 library(mvtnorm)
 library(reshape2)
-library(ggplot2)
 library(doSNOW)
+library(ggplot2)
 library(pforeach)
 rm(list=ls())
 start_time <- Sys.time()
@@ -37,7 +37,7 @@ source("../script/データ編集.R", encoding = "UTF-8")
 source('../script/DR_density.R', encoding = 'UTF-8')
 source('../script/AR_sim.R', encoding = 'UTF-8')
 set.seed(708)
-answer<-AR_sim(time=100,rho = 0.06,PD=0.035)
+answer<-AR_sim(time=10000,rho = 0.06,PD=0.035)
 head(answer)
 data_for_Kalman<-data.frame(dt=c(1:length(answer$DR)),DR=answer$DR)
 colnames(data_for_Kalman)<-c("dt","Default_Rate")
@@ -76,7 +76,7 @@ theta_sigma<-matrix(c(0.0005,0,0,0.0004),ncol=2)
 パーティクルの数は、128個  
 先ほど設定した初期値で、$\theta$の初期値を発生。状態変数への変換も行う。
 ```{r}
-N <- 100
+N <- 1000
 proposal_theta_m <- theta_mu
 proposal_theta_v <- theta_sigma
 theta_0<-rmvnorm(N , mean=theta_mu , sigma = theta_sigma)
@@ -121,12 +121,7 @@ tail(state,n=10)
 一様分布(0,1)から発生した乱数と累積相対尤度を用いてサンプリング
 ```{r}
 A_r<-function(r,state){
-  for(i in N:1){
-    if(r>=state[i,4]){
-      return(i+1)
-}
-    }
-    return(1)
+  return(which(r>=state[,4])[1])
 }
 ```
 リサンプリングする必要があるかどうか判定した上で、リサンプリング  
@@ -178,9 +173,8 @@ for(j in 2:length(data_for_Kalman[,1])){
   state<-c()
   #Particle発生
   theta<-t(parApply(cl,post_theta,1,function(x){
-                    c(rt(2,df=1))+theta_mu+theta_tau*(x-theta_mu)}
-                    )
-           )
+   rmvnorm(1,mean=theta_mu+theta_tau*(x-theta_mu),
+           sigma=theta_sigma)}))
   state<-sig(theta)
   state[state[,1]<1e-60,1]<-1e-60
   state[state[,2]<1e-60,2]<-1e-60
@@ -189,9 +183,7 @@ for(j in 2:length(data_for_Kalman[,1])){
   #重み計算
   weight_solution<-data.frame(post_theta,state_100[[j-1]][,6],theta,state,data_for_Kalman[j,2])
   weight<-parApply(cl,weight_solution,1,function(x){
-    x[3]*g_DR.fn(rho=x[6],PD=x[7],DR=x[8])*
-      dmvnorm(x = x[c(4,5)],mean = theta_mu+theta_tau*(x[c(1,2)]-theta_mu),sigma = theta_sigma)/
-      (dt(x[4],df=1)*dt(x[5],df=1))
+    x[3]*g_DR.fn(rho=x[6],PD=x[7],DR=x[8])
       })
   weight<-weight/sum(weight)
   state<-cbind(state,weight=weight)
@@ -210,7 +202,7 @@ for(j in 2:length(data_for_Kalman[,1])){
     re_theta<-theta
     resample_check <- 0
   }
-    
+    print(j)
   state_100<- c(state_100,list(data.frame(rho=state[,1],PD=state[,2],
                                           weight=weight,re_rho=re_state[,1],
                                           re_PD=re_state[,2],
@@ -293,7 +285,7 @@ Sys.time()-start_time
 フィルタリングの一番最後のウェイトを与える  
 リサンプリングの関数を平滑化用に修正  
 フィルタリングと同じようにコアの準備
-```{r}
+```{r,eval=FALSE}
 weight_T<-list(state_100[[length(data_for_Kalman[,1])]][,6])
 A_r<-function(r,weiht){
   return(which(r>=weight)[1])
@@ -303,7 +295,7 @@ clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu","theta_sigma","pr
 sm_state<-list(state_100[[length(data_for_Kalman[,1])]][,c(4,5,6)])
 ```
 平滑化に関しては、コメント参照
-```{r}
+```{r,eval=FALSE}
 clusterExport(cl, c("theta_100","state_100","N"))
 #時系列は、並列化できないので順番に処理
 for(n in c(length(data_for_Kalman[,1])-1):1){
@@ -361,7 +353,7 @@ Sys.time()-start_time
 
 ## 平滑化結果の図
 コアの準備をして、プロット
-```{r}
+```{r,eval=FALSE}
 cl <- makeCluster(rep('localhost', 7))
 clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu",
                     "sm_state","theta_sigma","proposal_theta_v"))

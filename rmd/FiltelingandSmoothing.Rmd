@@ -20,6 +20,7 @@ knitr::opts_chunk$set(echo = TRUE,message=FALSE,warning=FALSE)
 ところどころ、開始からの時間を出力しておく
 ```{r package}
 library(rgl)
+library(RcppDR)
 library(mvtnorm)
 library(reshape2)
 library(doSNOW)
@@ -37,7 +38,7 @@ source("../script/データ編集.R", encoding = "UTF-8")
 source('../script/DR_density.R', encoding = 'UTF-8')
 source('../script/AR_sim.R', encoding = 'UTF-8')
 set.seed(708)
-answer<-AR_sim(time=10000,rho = 0.06,PD=0.035)
+answer<-AR_sim(time=100,rho = 0.06,PD=0.035)
 head(answer)
 data_for_Kalman<-data.frame(dt=c(1:length(answer$DR)),DR=answer$DR)
 colnames(data_for_Kalman)<-c("dt","Default_Rate")
@@ -69,17 +70,17 @@ theta<-c()
 state<-c()
 theta_mu<-c(sig_env(0.06),sig_env(0.035))
 theta_tau<-c(0.99,0.99)
-theta_sigma<-matrix(c(0.0005,0,0,0.0004),ncol=2)
+theta_sigma<-sqrt(c(0.0005,0.0004))
 ```
 
 ## フィルタリング
 パーティクルの数は、128個  
 先ほど設定した初期値で、$\theta$の初期値を発生。状態変数への変換も行う。
 ```{r}
-N <- 1000
+N <- 100
 proposal_theta_m <- theta_mu
 proposal_theta_v <- theta_sigma
-theta_0<-rmvnorm(N , mean=theta_mu , sigma = theta_sigma)
+theta_0<-rmvnorm_rcpp(N , mean=theta_mu , sigma = theta_sigma)
 state_0<-sig(theta_0)
 ```
 
@@ -95,7 +96,7 @@ weight_0<-rep(1/N,N)
 時点1でのフィルタリング開始  
 ARモデルに従ってt=1での状態変数のParticle発生  
 ```{r}
-theta<-t(apply(theta_0,1,function(x) rmvnorm(1,mean=theta_mu+theta_tau*(x-theta_mu),sigma = theta_sigma)))
+theta<-t(apply(theta_0,1,function(x) rmvnorm_rcpp(1,mean=theta_mu+theta_tau*(x-theta_mu),sigma =theta_sigma)))
 state<-sig(theta)
 #PDやrhoは0と1を取れないので、そこだけ変換
 state[,1][state[,1]==0] <- 1e-60
@@ -106,7 +107,7 @@ state[,2][state[,2]==1] <- 0.9999999
 重みを計算  
 提案分布=実際の分布で、モンテカルロフィルタになっているので、重みを計算する際の分母分子が消える
 ```{r}
-weight<-apply(state,1,function(x) g_DR.fn(rho=x[1],PD=x[2],data_for_Kalman[1,2]))
+weight<-apply(state,1,function(x) g_DR_cpp(dr=data_for_Kalman[1,2],pd=x[2],RHO = x[1]))
 weight<-weight/sum(weight)
 state<-cbind(state,weight=weight)
 ```
@@ -121,7 +122,7 @@ tail(state,n=10)
 一様分布(0,1)から発生した乱数と累積相対尤度を用いてサンプリング
 ```{r}
 A_r<-function(r,state){
-  return(which(r>=state[,4])[1])
+  return(which(state[,4]>=r)[1])
 }
 ```
 リサンプリングする必要があるかどうか判定した上で、リサンプリング  
@@ -159,7 +160,7 @@ Sys.time()-start_time
 ```{r}
 theta_100<-list(data.frame(re_theta))
 cl <- makeCluster(rep('localhost', 7))
-clusterExport(cl, c("dmvnorm","rmvnorm","A_r","N","g_DR.fn",
+clusterExport(cl, c("rmvnorm_rcpp","dmvnorm_rcpp","A_r","N","g_DR_cpp",
                     "theta_tau","theta_mu","theta_sigma","proposal_theta_v","runif","dt","rt"))
 Sys.time()-start_time
 ```
@@ -173,7 +174,7 @@ for(j in 2:length(data_for_Kalman[,1])){
   state<-c()
   #Particle発生
   theta<-t(parApply(cl,post_theta,1,function(x){
-   rmvnorm(1,mean=theta_mu+theta_tau*(x-theta_mu),
+   rmvnorm_rcpp(1,mean=theta_mu+theta_tau*(x-theta_mu),
            sigma=theta_sigma)}))
   state<-sig(theta)
   state[state[,1]<1e-60,1]<-1e-60
@@ -183,7 +184,7 @@ for(j in 2:length(data_for_Kalman[,1])){
   #重み計算
   weight_solution<-data.frame(post_theta,state_100[[j-1]][,6],theta,state,data_for_Kalman[j,2])
   weight<-parApply(cl,weight_solution,1,function(x){
-    x[3]*g_DR.fn(rho=x[6],PD=x[7],DR=x[8])
+    x[3]*g_DR_cpp(RHO=x[6],pd=x[7],dr=x[8])
       })
   weight<-weight/sum(weight)
   state<-cbind(state,weight=weight)
@@ -202,7 +203,6 @@ for(j in 2:length(data_for_Kalman[,1])){
     re_theta<-theta
     resample_check <- 0
   }
-    print(j)
   state_100<- c(state_100,list(data.frame(rho=state[,1],PD=state[,2],
                                           weight=weight,re_rho=re_state[,1],
                                           re_PD=re_state[,2],
@@ -285,18 +285,18 @@ Sys.time()-start_time
 フィルタリングの一番最後のウェイトを与える  
 リサンプリングの関数を平滑化用に修正  
 フィルタリングと同じようにコアの準備
-```{r,eval=FALSE}
+```{r}
 weight_T<-list(state_100[[length(data_for_Kalman[,1])]][,6])
 A_r<-function(r,weiht){
-  return(which(r>=weight)[1])
+  return(which(weight>=r)[1])
 }
 cl <- makeCluster(rep('localhost', 7))
-clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu","theta_sigma","proposal_theta_v"))
+clusterExport(cl, c("dmvnorm_rcpp","g_DR_cpp","theta_tau","theta_mu","theta_sigma","proposal_theta_v"))
 sm_state<-list(state_100[[length(data_for_Kalman[,1])]][,c(4,5,6)])
 ```
 平滑化に関しては、コメント参照
-```{r,eval=FALSE}
-clusterExport(cl, c("theta_100","state_100","N"))
+```{r}
+clusterExport(cl, c("theta_100","state_100","N","vector_f_sum","rnorm_cpp"))
 #時系列は、並列化できないので順番に処理
 for(n in c(length(data_for_Kalman[,1])-1):1){
   weight_n<-c()
@@ -309,13 +309,17 @@ for(n in c(length(data_for_Kalman[,1])-1):1){
                   weight_T=weight_T[[length(data_for_Kalman[,1])-n]],
                   n=n)
   #平滑化ウェイトの分子計算
+  
   bunsi<-parApply(cl,
                   a,
                   1,
                   function(x)
-                  sum(apply(data.frame(i=1:N),1, function (y) x[7]*dmvnorm(as.numeric(x[c(1,2)]),
+                  apply(data.frame(i=1:N),1, function (y) x[7]*dmvnorm_rcpp(as.numeric(x[c(1,2)]),
                   mean=theta_mu+(as.numeric(theta_100[[x[8]]][y,c(1,2)])-theta_mu)*
-                  theta_tau,sigma=theta_sigma))))
+                  theta_tau,sigma=theta_sigma)))
+  
+  
+  
   
   
   #平滑化ウェイトの分母計算
@@ -323,11 +327,11 @@ for(n in c(length(data_for_Kalman[,1])-1):1){
                   a,
                   1,
                   function(x)
-                  sum(apply(data.frame(i=1:N),1, 
+                  apply(data.frame(i=1:N),1,
                   function(y)
-                  x[6]*dmvnorm(as.numeric(theta_100[[x[8]+1]][y,c(1,2)]),
+                  x[6]*dmvnorm_rcpp(as.numeric(theta_100[[x[8]+1]][y,c(1,2)]),
                   mean=theta_mu+(x[c(4,5)]-theta_mu)*theta_tau,
-                  sigma = theta_sigma))))
+                  sigma = theta_sigma)))
   
   
   weight_n<-c(state_100[[n]][,6]*bunsi/bunbo)
@@ -353,7 +357,7 @@ Sys.time()-start_time
 
 ## 平滑化結果の図
 コアの準備をして、プロット
-```{r,eval=FALSE}
+```{r}
 cl <- makeCluster(rep('localhost', 7))
 clusterExport(cl, c("dmvnorm","g_DR.fn","theta_tau","theta_mu",
                     "sm_state","theta_sigma","proposal_theta_v"))
